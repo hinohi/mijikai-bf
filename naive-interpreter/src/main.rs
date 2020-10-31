@@ -14,6 +14,7 @@ pub enum Cmd {
     Close(usize),
     In,
     Out,
+    Clear,
 }
 
 pub fn parse(s: &str) -> Result<Vec<Cmd>, ()> {
@@ -43,8 +44,14 @@ pub fn parse(s: &str) -> Result<Vec<Cmd>, ()> {
             }
             ']' => {
                 if let Some(i) = stack.pop() {
-                    cmd.push(Cmd::Close(i));
-                    cmd[i] = Cmd::Open(cmd.len());
+                    if cmd.len() == i + 2 && cmd.last() == Some(&Cmd::Incr(u8::MAX)) {
+                        cmd.pop(); // Incr
+                        cmd.pop(); // Open
+                        cmd.push(Cmd::Clear);
+                    } else {
+                        cmd.push(Cmd::Close(i + 1));
+                        cmd[i] = Cmd::Open(cmd.len());
+                    }
                 } else {
                     return Err(());
                 }
@@ -84,6 +91,10 @@ pub fn execute<R: Read, W: Write>(cmd: &[Cmd], cin: &mut R, cout: &mut W) {
                 } else {
                     pp = i;
                 }
+            }
+            Cmd::Clear => {
+                tape[tp] = 0;
+                pp += 1;
             }
             Cmd::In => {
                 let mut buf = [0];
