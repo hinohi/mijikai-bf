@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::{
     env::args,
     fs::File,
@@ -16,7 +17,7 @@ pub enum Cmd {
     Out,
 }
 
-pub fn read(s: &str) -> Result<Vec<Cmd>, ()> {
+pub fn parse(s: &str) -> Result<Vec<Cmd>, ()> {
     let mut cmd = Vec::new();
     let mut stack = Vec::new();
     for c in s.chars() {
@@ -100,19 +101,14 @@ pub fn execute<R: Read, W: Write>(cmd: &[Cmd], cin: &mut R, cout: &mut W) {
 }
 
 fn main() {
-    let args = args().skip(1).collect::<Vec<_>>();
+    let mut args = args().skip(1);
     let mut program = String::new();
-    File::open(&args[0])
+    File::open(&args.next().expect("Usage: ./naive-interpreter <bf>"))
         .unwrap()
         .read_to_string(&mut program)
         .unwrap();
-    let cmd = read(&program).unwrap();
+    let cmd = parse(&program).unwrap();
     let mut cout = stdout();
-    if args.len() >= 2 {
-        let mut cin = File::open(&args[1]).unwrap();
-        execute(&cmd, &mut cin, &mut cout);
-    } else {
-        let mut cin = stdin();
-        execute(&cmd, &mut cin, &mut cout);
-    }
+    let mut cin = stdin();
+    execute(&cmd, &mut cin, &mut cout);
 }
