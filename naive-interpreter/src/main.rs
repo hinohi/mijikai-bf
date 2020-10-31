@@ -1,16 +1,15 @@
-use std::error::Error;
 use std::{
     env::args,
     fs::File,
     io::{stdin, stdout, Read, Write},
 };
 
+const TAPE_LENGTH: usize = 1 << 20;
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Cmd {
-    Incr,
-    Decr,
-    Right,
-    Left,
+    Incr(u8),
+    Right(usize),
     Open(usize),
     Close(usize),
     In,
@@ -22,10 +21,22 @@ pub fn parse(s: &str) -> Result<Vec<Cmd>, ()> {
     let mut stack = Vec::new();
     for c in s.chars() {
         match c {
-            '+' => cmd.push(Cmd::Incr),
-            '-' => cmd.push(Cmd::Decr),
-            '>' => cmd.push(Cmd::Right),
-            '<' => cmd.push(Cmd::Left),
+            '+' => match cmd.last_mut() {
+                Some(Cmd::Incr(i)) => *i = i.wrapping_add(1),
+                _ => cmd.push(Cmd::Incr(1)),
+            },
+            '-' => match cmd.last_mut() {
+                Some(Cmd::Incr(i)) => *i = i.wrapping_add(u8::MAX),
+                _ => cmd.push(Cmd::Incr(u8::MAX)),
+            },
+            '>' => match cmd.last_mut() {
+                Some(Cmd::Right(i)) => *i += 1,
+                _ => cmd.push(Cmd::Right(1)),
+            },
+            '<' => match cmd.last_mut() {
+                Some(Cmd::Right(i)) => *i = (*i + TAPE_LENGTH - 1) % TAPE_LENGTH,
+                _ => cmd.push(Cmd::Right(TAPE_LENGTH - 1)),
+            },
             '[' => {
                 stack.push(cmd.len());
                 cmd.push(Cmd::Open(usize::MAX));
@@ -47,27 +58,18 @@ pub fn parse(s: &str) -> Result<Vec<Cmd>, ()> {
 }
 
 pub fn execute<R: Read, W: Write>(cmd: &[Cmd], cin: &mut R, cout: &mut W) {
-    const N: usize = 1 << 20;
-    let mut tape = vec![0u8; N];
+    let mut tape = vec![0u8; TAPE_LENGTH];
     let mut pp = 0;
     let mut tp = 0;
     while pp < cmd.len() {
         match cmd[pp] {
-            Cmd::Incr => {
-                tape[tp] = tape[tp].wrapping_add(1);
+            Cmd::Incr(i) => {
+                tape[tp] = tape[tp].wrapping_add(i);
                 pp += 1;
             }
-            Cmd::Decr => {
-                tape[tp] = tape[tp].wrapping_sub(1);
+            Cmd::Right(i) => {
+                tp = (tp + i) % TAPE_LENGTH;
                 pp += 1;
-            }
-            Cmd::Right => {
-                tp += 1;
-                pp += 1;
-            }
-            Cmd::Left => {
-                tp = (tp + N - 1) % N;
-                pp += 1
             }
             Cmd::Open(i) => {
                 if tape[tp] == 0 {
