@@ -30,35 +30,29 @@ struct C
     x: Cell
     f: Cell
 
-def main
+def main (
     arr: *C
+)
     arr += 1
     get *arr.x {
         *arr.f += 1
         arr += 1
     }
-    arr -= 1
-    *arr.f[
+    (arr -= 1; *arr.f) {
         *arr.f -= 1
-        arr -= 1
         *arr.x {
             *arr.x -= 1
-            arr -= 1
-            *arr.f[
-                arr -= 1
-            ]
+            (arr -= 1; *arr) {}
             *arr.x += 1
-            arr += 1
-            *arr.f[
-                arr += 1
-            ]
+            (arr += 1; *arr) {}
         }
-        *arr.f {
+        (arr -= 1; *arr) {
             *(arr + 1) = arr
-            arr -= 1
         }
-        arr += 1
-        TODO
-    ]
+        (arr += 1; *arr) {}
+    }
+    (arr -= 1; *arr.x) {}
+    (arr += 1; *arr.x) {
+        put *arr.x
+    }
 ```
-
