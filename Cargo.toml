@@ -1,7 +1,4 @@
-[package]
-name = "mijikai-bf"
-version = "0.1.0"
-authors = ["Nakayama Daiju"]
-edition = "2018"
-
-[dependencies]
+[workspace]
+members = [
+    "naive-interpreter",
+]
