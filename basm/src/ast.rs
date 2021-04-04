@@ -2,9 +2,9 @@
 pub enum Ast {
     /// Number like `10`, `'0'`
     Number { value: u8 },
-    /// ident
+    /// Ident
     Ident { name: String },
-    /// Set like `(a|b)`
+    /// Ident set like `(a|b)`
     Set { values: Vec<Ast> },
     /// Attribute access like `a.b`
     Attribute { value: Box<Ast>, attr: String },
@@ -27,12 +27,15 @@ pub enum Ast {
     /// Call function like `f a b`
     Call { name: String, args: Vec<Ast> },
     /// While statement like `while a { b += 1 }`
-    While { condition: Vec<Ast>, body: Vec<Ast> },
+    While {
+        conditions: Vec<Ast>,
+        body: Vec<Ast>,
+    },
     /// Open-Close like `a [ b += 1; c ] c`
     OpenClose {
         open: Box<Ast>,
-        close: Box<Ast>,
         body: Vec<Ast>,
+        close: Box<Ast>,
     },
     /// Function definition
     FuncDef {
@@ -40,6 +43,7 @@ pub enum Ast {
         args: Vec<NameDef>,
         input_conditions: Vec<Ast2>,
         output_conditions: Vec<Ast2>,
+        body: Vec<Ast>,
     },
     /// Struct definition
     StructDef { name: String, fields: Vec<NameDef> },
@@ -49,6 +53,7 @@ pub enum Ast {
 pub struct NameDef {
     pub name: String,
     pub typ: String,
+    pub reference: bool,
 }
 
 #[derive(Debug, Clone)]
