@@ -28,18 +28,17 @@ n[n->d-[>r+>>X]>Yr?[r+[-<d+>]>q+>>Y]Y<<<<<n]
 ## 擬似コード
 
 ```
-def divmod (
-    n: cell
-    d: cell
-    r: cell
-    q: cell
-    x: TERM
-    y: TERM
+fn divmod (
+    n: Cell,
+    d: Cell,
+    r: Cell,
+    q: Cell,
+    x: Term,
+    y: Term,
 )
 where (
     d >= 2
     r == 0
-    &d - &r == &x - &y
 )
 then (
     n: 0
@@ -47,19 +46,22 @@ then (
     r: n % d
     q: q + n / d
 )
-    n {
-        n -= 1
-        d -= 1
-        d [
-            r += 1
+    while n { 
+        n -= 1;
+        d -= 1;
+        bra d {
+            r += 1;
             x
-        ] (d|x)
-        *(&r - &d)
-        (r|y) [
-            r += 1
-            d += r
-            q += 1
+        } ket (d|x);
+        move {
+            d -> r,
+            x -> y,
+        }
+        bra (r|y) {
+            r += 1;
+            d += r;
+            q += 1;
             y
-        ] y
+        } ket y;
     }
 ```
