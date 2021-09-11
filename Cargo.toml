@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "basm",
+    "basm-parser",
     "naive-interpreter",
 ]
