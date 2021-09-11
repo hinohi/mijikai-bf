@@ -1,15 +1,15 @@
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Term {
     /// Number like `10`, `'0'`
-    Number { value: i32 },
+    Number(i32),
     /// Ident
-    Ident { name: String },
+    Ident(String),
     /// Ident set like `(a|b)`
-    Set { values: Vec<Term> },
+    Set(Vec<Term>),
     /// Attribute access like `a.b`
-    Attribute { value: Box<Term>, attr: String },
+    Attribute { target: Box<Term>, attr: String },
     /// Dereference like `*a`
-    Deref { target: Box<Term> },
+    Deref(Box<Term>),
     /// Index access like `a[1]`
     Index { target: Box<Term>, index: i32 },
 }
@@ -17,15 +17,17 @@ pub enum Term {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr {
     /// Term
-    Term { term: Term },
+    Term(Term),
     /// Region like `{a += 1; b}`
-    Region { body: Vec<Expr> },
+    Region { body: Vec<Expr>, ret: Box<Expr> },
     /// Call function like `f(a, b)`
     Call { name: String, args: Vec<Expr> },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Stmt {
+    /// Expression
+    Expr(Expr),
     /// Assign add like `a += b`
     AssignAdd {
         target: Box<Term>,
@@ -41,14 +43,17 @@ pub enum Stmt {
     /// While statement like `while a { b += 1 }`
     While {
         condition: Box<Expr>,
-        body: Vec<Expr>,
+        body: Vec<Stmt>,
     },
     /// Bra-ket like `bra a { b += 1; c } ket c;`
     Braket {
         bra: Box<Expr>,
-        body: Vec<Expr>,
+        body: Vec<Stmt>,
         ket: Box<Expr>,
     },
+}
+
+pub enum Def {
     /// Function definition
     FuncDef(FuncDef),
     /// Struct definition
@@ -59,7 +64,17 @@ pub enum Stmt {
 pub struct FuncDef {
     pub name: String,
     pub args: Vec<TypedDeclaration>,
-    pub body: Vec<Expr>,
+    pub body: Vec<Stmt>,
+}
+
+impl FuncDef {
+    pub fn new<S: Into<String>>(name: S, args: Vec<TypedDeclaration>, body: Vec<Stmt>) -> FuncDef {
+        FuncDef {
+            name: name.into(),
+            args,
+            body,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
