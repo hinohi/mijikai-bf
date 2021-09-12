@@ -120,15 +120,16 @@ pub fn expr(input: &str) -> IResult<&str, Expr> {
 fn term(input: &str) -> IResult<&str, Term> {
     alt((
         map(number, Term::Number),
-        map(set, Term::Set),
         variable,
-        preceded(char('*'), term),
+        map(preceded(char('*'), term), |t| Term::Deref(Box::new(t))),
     ))(input)
 }
 
 fn variable(input: &str) -> IResult<&str, Term> {
-    let (mut input, ident) = identifier(input)?;
-    let mut term = Term::Ident(ident.to_owned());
+    let (mut input, mut term) = alt((
+        map(set, Term::Set),
+        map(identifier, |i| Term::Ident(i.to_owned())),
+    ))(input)?;
     while let Ok((i, c)) = one_of::<&str, &str, nom::error::Error<&str>>(".[")(input) {
         input = i;
         if c == '.' {
@@ -204,21 +205,45 @@ mod tests {
 
     #[test]
     fn test_term() {
-        assert_eq!(term("1"), Ok(("", Term::Number(1))));
-        assert_eq!(term("a {}"), Ok((" {}", Term::Ident("a".to_owned()))));
+        use Term::*;
+        assert_eq!(term("1"), Ok(("", Number(1))));
+        assert_eq!(term("a {}"), Ok((" {}", Ident("a".to_owned()))));
         assert_eq!(
             term("c.b.a"),
             Ok((
                 "",
-                Term::Attribute {
-                    target: Box::new(Term::Attribute {
-                        target: Box::new(Term::Ident("c".to_owned())),
+                Attribute {
+                    target: Box::new(Attribute {
+                        target: Box::new(Ident("c".to_owned())),
                         attr: "b".to_owned(),
                     }),
                     attr: "a".to_owned(),
                 }
             ))
         );
+        assert_eq!(
+            term("*(a|b[1]|*c)[0].b[-1]"),
+            Ok((
+                "",
+                Deref(Box::new(Index {
+                    target: Box::new(Attribute {
+                        target: Box::new(Index {
+                            target: Box::new(Set(vec![
+                                Ident("a".to_owned()),
+                                Index {
+                                    target: Box::new(Ident("b".to_owned())),
+                                    index: 1,
+                                },
+                                Deref(Box::new(Ident("c".to_owned()))),
+                            ])),
+                            index: 0,
+                        }),
+                        attr: "b".to_owned(),
+                    }),
+                    index: -1,
+                }))
+            ))
+        )
     }
 
     #[test]
