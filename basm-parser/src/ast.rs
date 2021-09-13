@@ -14,27 +14,43 @@ pub enum Term {
     Index { target: Box<Term>, index: i32 },
 }
 
+impl Term {
+    pub fn ident<S: Into<String>>(name: S) -> Term {
+        Term::Ident(name.into())
+    }
+
+    pub fn expr(self) -> Expr {
+        Expr::Term(self)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr {
     /// Term
     Term(Term),
     /// Region like `{a += 1; b}`
-    Region { body: Vec<Expr>, ret: Box<Expr> },
+    Region { body: Vec<Stmt>, ret: Box<Expr> },
     /// Call function like `f(a, b)`
-    Call { name: String, args: Vec<Expr> },
+    Call { name: String, args: Vec<Term> },
+}
+
+impl Expr {
+    pub fn stmt(self) -> Stmt {
+        Stmt::Expr(self)
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Stmt {
     /// Expression
     Expr(Expr),
-    /// Assign add like `a += b`
+    /// Assign add like `a += b;`
     AssignAdd {
         target: Box<Term>,
         value: Box<Expr>,
         factor: i32,
     },
-    /// Assign sub like `a -= b`
+    /// Assign sub like `a -= b;`
     AssignSub {
         target: Box<Term>,
         value: Box<Expr>,
@@ -47,9 +63,10 @@ pub enum Stmt {
     },
     /// Bra-ket like `bra a { b += 1; c } ket c;`
     Braket {
-        bra: Box<Expr>,
+        bra: Box<Term>,
         body: Vec<Stmt>,
-        ket: Box<Expr>,
+        ret: Box<Expr>,
+        ket: Box<Term>,
     },
 }
 
