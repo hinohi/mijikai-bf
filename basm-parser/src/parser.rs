@@ -3,14 +3,12 @@ use nom::{
     bytes::complete::{is_not, tag},
     character::complete::{alpha1, alphanumeric1, char, multispace0, multispace1, one_of},
     combinator::{eof, map, opt, recognize, value},
-    multi::{many0, separated_list0},
-    sequence::{delimited, pair, preceded, tuple},
+    multi::{many0, many1, separated_list0, separated_list1},
+    sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
 use crate::ast::{Def, Expr, FuncDef, Stmt, StructDef, Term, Type, TypedDeclaration};
-use nom::multi::separated_list1;
-use nom::sequence::terminated;
 
 pub fn parse(input: &str) -> IResult<&str, Vec<Def>> {
     let (input, stmts) = many0(def)(input)?;
@@ -226,6 +224,7 @@ pub fn stmt(input: &str) -> IResult<&str, Stmt> {
         while_stmt,
         braket,
         assign,
+        move_stmt,
         map(tuple((skip, expr, skip, char(';'))), |(_, e, _, _)| {
             Stmt::Expr(e)
         }),
@@ -298,6 +297,21 @@ fn braket(input: &str) -> IResult<&str, Stmt> {
             ket: Box::new(ket),
         },
     ))
+}
+
+fn move_stmt(input: &str) -> IResult<&str, Stmt> {
+    let right = pair(skip, tag("->"));
+    let item = pair(preceded(skip, term), preceded(right, preceded(skip, term)));
+
+    let (input, _) = skip(input)?;
+    let (input, _) = pair(tag("move"), multispace1)(input)?;
+    let (input, _) = skip(input)?;
+    let (input, _) = char('{')(input)?;
+    let (input, v) = many1(terminated(item, pair(skip, char(','))))(input)?;
+    let (input, _) = skip(input)?;
+    let (input, _) = char('}')(input)?;
+
+    Ok((input, Stmt::Move(v)))
 }
 
 #[cfg(test)]
@@ -537,6 +551,28 @@ mod tests {
                     ret: Box::new(Term::ident("b").expr()),
                     ket: Box::new(Term::Set(vec![Term::ident("a"), Term::ident("b")])),
                 }
+            ))
+        )
+    }
+
+    #[test]
+    fn test_move() {
+        assert_eq!(
+            stmt(
+                r#"
+        move {
+            # a から b
+            a -> b,
+            # c から d
+            c -> d,
+        }"#
+            ),
+            Ok((
+                "",
+                Stmt::Move(vec![
+                    (Term::ident("a"), Term::ident("b")),
+                    (Term::ident("c"), Term::ident("d")),
+                ])
             ))
         )
     }

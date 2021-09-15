@@ -68,6 +68,8 @@ pub enum Stmt {
         ret: Box<Expr>,
         ket: Box<Term>,
     },
+    /// Move like `move {a -> b; c -> d;}`
+    Move(Vec<(Term, Term)>),
 }
 
 pub enum Def {
