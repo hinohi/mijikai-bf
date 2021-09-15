@@ -8,7 +8,9 @@ use nom::{
     IResult,
 };
 
-use crate::ast::{Def, Expr, FuncDef, Stmt, StructDef, Term, Type, TypedDeclaration};
+use crate::ast::{
+    Def, Expr, FuncDef, Literal, Stmt, StructDef, Term, Type, TypedDeclaration, Variable,
+};
 
 pub fn parse(input: &str) -> IResult<&str, Vec<Def>> {
     let (input, stmts) = many0(def)(input)?;
@@ -121,7 +123,7 @@ fn basm_type(input: &str) -> IResult<&str, Type> {
 }
 
 pub fn expr(input: &str) -> IResult<&str, Expr> {
-    alt((region, call, map(term, Expr::Term)))(input)
+    alt((region, call, map(variable, Expr::Variable)))(input)
 }
 
 fn region(input: &str) -> IResult<&str, Expr> {
@@ -144,7 +146,7 @@ fn call(input: &str) -> IResult<&str, Expr> {
     let trail_comma = value((), tuple((char(','), skip, char(')'))));
     let (input, args) = delimited(
         pair(skip, char('(')),
-        separated_list0(pair(skip, char(',')), term),
+        separated_list0(pair(skip, char(',')), variable),
         pair(skip, alt((value((), char(')')), trail_comma))),
     )(input)?;
     Ok((
@@ -158,40 +160,42 @@ fn call(input: &str) -> IResult<&str, Expr> {
 
 fn term(input: &str) -> IResult<&str, Term> {
     alt((
-        map(number, Term::Number),
-        variable,
-        map(preceded(char('*'), term), |t| Term::Deref(Box::new(t))),
+        map(number, |n| Literal::Number(n).term()),
+        map(variable, Term::Variable),
     ))(input)
 }
 
-fn variable(input: &str) -> IResult<&str, Term> {
-    let (mut input, mut term) = alt((
-        map(set, Term::Set),
-        map(identifier, |i| Term::Ident(i.to_owned())),
+fn variable(input: &str) -> IResult<&str, Variable> {
+    alt((
+        value_variable,
+        map(preceded(char('*'), value_variable), |t| {
+            Variable::Deref(Box::new(t))
+        }),
+    ))(input)
+}
+
+fn value_variable(input: &str) -> IResult<&str, Variable> {
+    let (mut input, mut v) = alt((
+        map(set, Variable::Set),
+        map(identifier, |i| Variable::ident(i.to_owned())),
     ))(input)?;
     while let Ok((i, c)) = one_of::<&str, &str, nom::error::Error<&str>>(".[")(input) {
         input = i;
         if c == '.' {
             let (i, attr) = identifier(i)?;
-            term = Term::Attribute {
-                target: Box::new(term),
-                attr: attr.to_owned(),
-            };
+            v = v.attr(attr);
             input = i;
         } else {
             let (i, (index, _)) = pair(number, char(']'))(input)?;
-            term = Term::Index {
-                target: Box::new(term),
-                index,
-            };
+            v = v.index(index);
             input = i;
         }
     }
-    Ok((input, term))
+    Ok((input, v))
 }
 
-fn set(input: &str) -> IResult<&str, Vec<Term>> {
-    delimited(char('('), separated_list1(char('|'), term), char(')'))(input)
+fn set(input: &str) -> IResult<&str, Vec<Variable>> {
+    delimited(char('('), separated_list1(char('|'), variable), char(')'))(input)
 }
 
 fn number(input: &str) -> IResult<&str, i32> {
@@ -233,11 +237,11 @@ pub fn stmt(input: &str) -> IResult<&str, Stmt> {
 
 fn assign(input: &str) -> IResult<&str, Stmt> {
     let (input, _) = skip(input)?;
-    let (input, target) = term(input)?;
+    let (input, target) = variable(input)?;
     let (input, _) = skip(input)?;
     let (input, (t, _)) = pair(one_of("+-"), char('='))(input)?;
     let (input, _) = skip(input)?;
-    let (input, value) = expr(input)?;
+    let (input, value) = term(input)?;
     let (input, _) = skip(input)?;
     let (input, factor) = opt(preceded(pair(char('*'), skip), number))(input)?;
     let (input, _) = pair(skip, char(';'))(input)?;
@@ -278,7 +282,7 @@ fn braket(input: &str) -> IResult<&str, Stmt> {
     let (input, _) = skip(input)?;
     let (input, _) = pair(tag("bra"), multispace1)(input)?;
     let (input, _) = skip(input)?;
-    let (input, bra) = term(input)?;
+    let (input, bra) = variable(input)?;
     let (input, _) = skip(input)?;
     let (input, _) = char('{')(input)?;
     let (input, (body, _, ret)) =
@@ -286,7 +290,7 @@ fn braket(input: &str) -> IResult<&str, Stmt> {
     let (input, _) = skip(input)?;
     let (input, _) = pair(tag("ket"), multispace1)(input)?;
     let (input, _) = skip(input)?;
-    let (input, ket) = term(input)?;
+    let (input, ket) = variable(input)?;
     let (input, _) = pair(skip, char(';'))(input)?;
     Ok((
         input,
@@ -301,7 +305,10 @@ fn braket(input: &str) -> IResult<&str, Stmt> {
 
 fn move_stmt(input: &str) -> IResult<&str, Stmt> {
     let right = pair(skip, tag("->"));
-    let item = pair(preceded(skip, term), preceded(right, preceded(skip, term)));
+    let item = pair(
+        preceded(skip, variable),
+        preceded(right, preceded(skip, variable)),
+    );
 
     let (input, _) = skip(input)?;
     let (input, _) = pair(tag("move"), multispace1)(input)?;
@@ -338,46 +345,27 @@ mod tests {
     }
 
     #[test]
-    fn test_term() {
-        use Term::*;
-        assert_eq!(term("1"), Ok(("", Number(1))));
-        assert_eq!(term("a {}"), Ok((" {}", Ident("a".to_owned()))));
+    fn test_variable() {
+        assert_eq!(variable("a {}"), Ok((" {}", Variable::ident("a"))));
         assert_eq!(
-            term("c.b.a"),
-            Ok((
-                "",
-                Attribute {
-                    target: Box::new(Attribute {
-                        target: Box::new(Ident("c".to_owned())),
-                        attr: "b".to_owned(),
-                    }),
-                    attr: "a".to_owned(),
-                }
-            ))
+            variable("c.b.a"),
+            Ok(("", Variable::ident("c").attr("b").attr("a")))
         );
         assert_eq!(
-            term("*(a|b[1]|*c)[0].b[-1]"),
+            variable("*(a|b[1]|*c)[0].b[-1]"),
             Ok((
                 "",
-                Deref(Box::new(Index {
-                    target: Box::new(Attribute {
-                        target: Box::new(Index {
-                            target: Box::new(Set(vec![
-                                Ident("a".to_owned()),
-                                Index {
-                                    target: Box::new(Ident("b".to_owned())),
-                                    index: 1,
-                                },
-                                Deref(Box::new(Ident("c".to_owned()))),
-                            ])),
-                            index: 0,
-                        }),
-                        attr: "b".to_owned(),
-                    }),
-                    index: -1,
-                }))
+                Variable::Set(vec![
+                    Variable::ident("a"),
+                    Variable::ident("b").index(1),
+                    Variable::ident("c").dereference(),
+                ])
+                .index(0)
+                .attr("b")
+                .index(-1)
+                .dereference()
             ))
-        )
+        );
     }
 
     #[test]
@@ -420,14 +408,14 @@ mod tests {
 
     #[test]
     fn test_expr() {
-        assert_eq!(expr("a"), Ok(("", Term::ident("a").expr())));
+        assert_eq!(expr("a"), Ok(("", Variable::ident("a").expr())));
         assert_eq!(
             expr("f(a)"),
             Ok((
                 "",
                 Expr::Call {
                     name: "f".to_owned(),
-                    args: vec![Term::ident("a")],
+                    args: vec![Variable::ident("a")],
                 }
             ))
         );
@@ -437,11 +425,11 @@ mod tests {
                 "",
                 Expr::Region {
                     body: vec![Stmt::AssignAdd {
-                        target: Box::new(Term::ident("a")),
-                        value: Box::new(Term::Number(1).expr()),
+                        target: Box::new(Variable::ident("a")),
+                        value: Box::new(Literal::Number(1).term()),
                         factor: 1,
                     }],
-                    ret: Box::new(Term::ident("b").expr()),
+                    ret: Box::new(Variable::ident("b").expr()),
                 }
             ))
         );
@@ -449,14 +437,14 @@ mod tests {
 
     #[test]
     fn test_stmt_simple() {
-        assert_eq!(stmt("a;"), Ok(("", Term::ident("a").expr().stmt())));
+        assert_eq!(stmt("a;"), Ok(("", Variable::ident("a").expr().stmt())));
         assert_eq!(
             stmt("a += b;"),
             Ok((
                 "",
                 Stmt::AssignAdd {
-                    target: Box::new(Term::ident("a")),
-                    value: Box::new(Term::ident("b").expr()),
+                    target: Box::new(Variable::ident("a")),
+                    value: Box::new(Variable::ident("b").term()),
                     factor: 1,
                 }
             ))
@@ -466,8 +454,8 @@ mod tests {
             Ok((
                 "",
                 Stmt::AssignSub {
-                    target: Box::new(Term::ident("a")),
-                    value: Box::new(Term::ident("b").expr()),
+                    target: Box::new(Variable::ident("a")),
+                    value: Box::new(Variable::ident("b").term()),
                     factor: 3,
                 }
             ))
@@ -481,7 +469,7 @@ mod tests {
             Ok((
                 "",
                 Stmt::While {
-                    condition: Box::new(Term::ident("a").expr()),
+                    condition: Box::new(Variable::ident("a").expr()),
                     body: Vec::new(),
                 }
             ))
@@ -507,28 +495,22 @@ mod tests {
                 Stmt::While {
                     condition: Box::new(Expr::Region {
                         body: vec![
-                            Stmt::Expr(Expr::Call {
-                                name: "get".to_owned(),
-                                args: vec![Term::ident("a")]
-                            }),
+                            Expr::call("get", vec![Variable::ident("a")]).stmt(),
                             Stmt::AssignAdd {
-                                target: Box::new(Term::ident("a")),
-                                value: Box::new(Term::Number(1).expr()),
+                                target: Box::new(Variable::ident("a")),
+                                value: Box::new(Literal::Number(1).term()),
                                 factor: 1,
                             },
                         ],
-                        ret: Box::new(Term::ident("a").expr())
+                        ret: Box::new(Variable::ident("a").expr())
                     }),
                     body: vec![
                         Stmt::AssignSub {
-                            target: Box::new(Term::ident("a")),
-                            value: Box::new(Term::Number(32).expr()),
+                            target: Box::new(Variable::ident("a")),
+                            value: Box::new(Literal::Number(32).term()),
                             factor: 1,
                         },
-                        Stmt::Expr(Expr::Call {
-                            name: "put".to_owned(),
-                            args: vec![Term::ident("a")],
-                        }),
+                        Expr::call("put", vec![Variable::ident("a")]).stmt(),
                     ],
                 }
             ))
@@ -542,14 +524,17 @@ mod tests {
             Ok((
                 "",
                 Stmt::Braket {
-                    bra: Box::new(Term::ident("a")),
+                    bra: Box::new(Variable::ident("a")),
                     body: vec![Stmt::AssignSub {
-                        target: Box::new(Term::ident("a")),
-                        value: Box::new(Term::Number(1).expr()),
+                        target: Box::new(Variable::ident("a")),
+                        value: Box::new(Literal::Number(1).term()),
                         factor: 1,
                     }],
-                    ret: Box::new(Term::ident("b").expr()),
-                    ket: Box::new(Term::Set(vec![Term::ident("a"), Term::ident("b")])),
+                    ret: Box::new(Variable::ident("b").expr()),
+                    ket: Box::new(Variable::Set(vec![
+                        Variable::ident("a"),
+                        Variable::ident("b")
+                    ])),
                 }
             ))
         )
@@ -570,8 +555,8 @@ mod tests {
             Ok((
                 "",
                 Stmt::Move(vec![
-                    (Term::ident("a"), Term::ident("b")),
-                    (Term::ident("c"), Term::ident("d")),
+                    (Variable::ident("a"), Variable::ident("b")),
+                    (Variable::ident("c"), Variable::ident("d")),
                 ])
             ))
         )

@@ -1,40 +1,89 @@
+use crate::Variable::Attribute;
+
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Term {
+pub enum Literal {
     /// Number like `10`, `'0'`
     Number(i32),
+    /// Char like `'0'`
+    Char(u8),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Variable {
     /// Ident
     Ident(String),
     /// Ident set like `(a|b)`
-    Set(Vec<Term>),
+    Set(Vec<Variable>),
     /// Attribute access like `a.b`
-    Attribute { target: Box<Term>, attr: String },
+    Attribute { target: Box<Variable>, attr: String },
     /// Dereference like `*a`
-    Deref(Box<Term>),
+    Deref(Box<Variable>),
     /// Index access like `a[1]`
-    Index { target: Box<Term>, index: i32 },
+    Index { target: Box<Variable>, index: i32 },
 }
 
-impl Term {
-    pub fn ident<S: Into<String>>(name: S) -> Term {
-        Term::Ident(name.into())
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Term {
+    Literal(Literal),
+    Variable(Variable),
+}
+
+impl Literal {
+    pub fn term(self) -> Term {
+        Term::Literal(self)
+    }
+}
+
+impl Variable {
+    pub fn ident<S: Into<String>>(name: S) -> Variable {
+        Variable::Ident(name.into())
+    }
+
+    pub fn attr<S: Into<String>>(self, attr: S) -> Variable {
+        Attribute {
+            target: Box::new(self),
+            attr: attr.into(),
+        }
+    }
+
+    pub fn dereference(self) -> Variable {
+        Variable::Deref(Box::new(self))
+    }
+
+    pub fn index(self, index: i32) -> Variable {
+        Variable::Index {
+            target: Box::new(self),
+            index,
+        }
+    }
+
+    pub fn term(self) -> Term {
+        Term::Variable(self)
     }
 
     pub fn expr(self) -> Expr {
-        Expr::Term(self)
+        Expr::Variable(self)
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Expr {
-    /// Term
-    Term(Term),
+    /// Variable reference
+    Variable(Variable),
     /// Region like `{a += 1; b}`
     Region { body: Vec<Stmt>, ret: Box<Expr> },
     /// Call function like `f(a, b)`
-    Call { name: String, args: Vec<Term> },
+    Call { name: String, args: Vec<Variable> },
 }
 
 impl Expr {
+    pub fn call<S: Into<String>>(name: S, args: Vec<Variable>) -> Expr {
+        Expr::Call {
+            name: name.into(),
+            args,
+        }
+    }
+
     pub fn stmt(self) -> Stmt {
         Stmt::Expr(self)
     }
@@ -46,14 +95,14 @@ pub enum Stmt {
     Expr(Expr),
     /// Assign add like `a += b;`
     AssignAdd {
-        target: Box<Term>,
-        value: Box<Expr>,
+        target: Box<Variable>,
+        value: Box<Term>,
         factor: i32,
     },
     /// Assign sub like `a -= b;`
     AssignSub {
-        target: Box<Term>,
-        value: Box<Expr>,
+        target: Box<Variable>,
+        value: Box<Term>,
         factor: i32,
     },
     /// While statement like `while a { b += 1 }`
@@ -63,13 +112,13 @@ pub enum Stmt {
     },
     /// Bra-ket like `bra a { b += 1; c } ket c;`
     Braket {
-        bra: Box<Term>,
+        bra: Box<Variable>,
         body: Vec<Stmt>,
         ret: Box<Expr>,
-        ket: Box<Term>,
+        ket: Box<Variable>,
     },
     /// Move like `move {a -> b; c -> d;}`
-    Move(Vec<(Term, Term)>),
+    Move(Vec<(Variable, Variable)>),
 }
 
 pub enum Def {
