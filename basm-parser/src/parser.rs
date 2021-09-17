@@ -1,26 +1,29 @@
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag},
-    character::complete::{alpha1, alphanumeric1, char, multispace0, multispace1, one_of},
-    combinator::{eof, map, opt, recognize, value},
-    multi::{many0, many1, separated_list0, separated_list1},
+    bytes::complete::tag,
+    character::complete::{char, multispace0, multispace1, one_of},
+    combinator::{eof, map, opt, value},
+    multi::{many0, many1, separated_list0},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
-use crate::ast::{
-    Def, Expr, FuncDef, Literal, Stmt, StructDef, Term, Type, TypedDeclaration, Variable,
+use self::{
+    combinator::isolated_tag,
+    simple::{comment, identifier, number},
+    variable::variable,
 };
+use crate::ast::{Def, Expr, FuncDef, Literal, Stmt, StructDef, Term, Type, TypedDeclaration};
+
+mod combinator;
+mod simple;
+mod variable;
 
 pub fn parse(input: &str) -> IResult<&str, Vec<Def>> {
     let (input, stmts) = many0(def)(input)?;
     let (input, _) = skip(input)?;
     let (input, _) = eof(input)?;
     Ok((input, stmts))
-}
-
-fn comment(input: &str) -> IResult<&str, &str> {
-    preceded(char('#'), is_not("\r\n"))(input)
 }
 
 fn skip(input: &str) -> IResult<&str, ()> {
@@ -32,13 +35,6 @@ fn skip(input: &str) -> IResult<&str, ()> {
         }
         input = multispace0(input)?.0;
     }
-}
-
-fn identifier(input: &str) -> IResult<&str, &str> {
-    recognize(pair(
-        alt((alpha1, tag("_"))),
-        many0(alt((alphanumeric1, tag("_")))),
-    ))(input)
 }
 
 fn def(input: &str) -> IResult<&str, Def> {
@@ -59,7 +55,8 @@ fn def(input: &str) -> IResult<&str, Def> {
 /// ```
 pub fn struct_def(input: &str) -> IResult<&str, StructDef> {
     let (input, _) = skip(input)?;
-    let (input, _) = pair(tag("struct"), multispace1)(input)?;
+    let (input, _) = isolated_tag("struct")(input)?;
+    let (input, _) = skip(input)?;
     let (input, name) = identifier(input)?;
     let (input, fields) = comma_sp_fields('{', '}')(input)?;
     Ok((input, StructDef::new(name, fields)))
@@ -79,7 +76,8 @@ pub fn struct_def(input: &str) -> IResult<&str, StructDef> {
 /// ```
 pub fn func_def(input: &str) -> IResult<&str, FuncDef> {
     let (input, _) = skip(input)?;
-    let (input, _) = pair(tag("fn"), multispace1)(input)?;
+    let (input, _) = isolated_tag("fn")(input)?;
+    let (input, _) = skip(input)?;
     let (input, name) = identifier(input)?;
     let (input, args) = comma_sp_fields('(', ')')(input)?;
     let (input, _) = skip(input)?;
@@ -163,64 +161,6 @@ fn term(input: &str) -> IResult<&str, Term> {
         map(number, |n| Literal::Number(n).term()),
         map(variable, Term::Variable),
     ))(input)
-}
-
-fn variable(input: &str) -> IResult<&str, Variable> {
-    alt((
-        value_variable,
-        map(preceded(char('*'), value_variable), |t| {
-            Variable::Deref(Box::new(t))
-        }),
-    ))(input)
-}
-
-fn value_variable(input: &str) -> IResult<&str, Variable> {
-    let (mut input, mut v) = alt((
-        map(set, Variable::Set),
-        map(identifier, |i| Variable::ident(i.to_owned())),
-    ))(input)?;
-    while let Ok((i, c)) = one_of::<&str, &str, nom::error::Error<&str>>(".[")(input) {
-        input = i;
-        if c == '.' {
-            let (i, attr) = identifier(i)?;
-            v = v.attr(attr);
-            input = i;
-        } else {
-            let (i, (index, _)) = pair(number, char(']'))(input)?;
-            v = v.index(index);
-            input = i;
-        }
-    }
-    Ok((input, v))
-}
-
-fn set(input: &str) -> IResult<&str, Vec<Variable>> {
-    delimited(char('('), separated_list1(char('|'), variable), char(')'))(input)
-}
-
-fn number(input: &str) -> IResult<&str, i32> {
-    use nom::error;
-    let (i, s) = recognize(alt((
-        value((), char('0')),
-        value(
-            (),
-            tuple((
-                opt(char('-')),
-                one_of("123456789"),
-                many0(one_of("1234567890")),
-            )),
-        ),
-    )))(input)?;
-    let n = match s.parse() {
-        Ok(n) => n,
-        Err(_) => {
-            return Err(nom::Err::Error(error::Error::new(
-                input,
-                error::ErrorKind::Satisfy,
-            )))
-        }
-    };
-    Ok((i, n))
 }
 
 pub fn stmt(input: &str) -> IResult<&str, Stmt> {
@@ -324,6 +264,7 @@ fn move_stmt(input: &str) -> IResult<&str, Stmt> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Variable;
 
     #[test]
     fn test_field() {
@@ -342,30 +283,6 @@ mod tests {
         assert_eq!(number("123"), Ok(("", 123)));
         assert_eq!(number("-987654"), Ok(("", -987654)));
         assert_eq!(number("0"), Ok(("", 0)));
-    }
-
-    #[test]
-    fn test_variable() {
-        assert_eq!(variable("a {}"), Ok((" {}", Variable::ident("a"))));
-        assert_eq!(
-            variable("c.b.a"),
-            Ok(("", Variable::ident("c").attr("b").attr("a")))
-        );
-        assert_eq!(
-            variable("*(a|b[1]|*c)[0].b[-1]"),
-            Ok((
-                "",
-                Variable::Set(vec![
-                    Variable::ident("a"),
-                    Variable::ident("b").index(1),
-                    Variable::ident("c").dereference(),
-                ])
-                .index(0)
-                .attr("b")
-                .index(-1)
-                .dereference()
-            ))
-        );
     }
 
     #[test]
