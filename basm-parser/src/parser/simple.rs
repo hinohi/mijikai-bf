@@ -43,3 +43,15 @@ pub fn number(input: &str) -> IResult<&str, i32> {
     };
     Ok((i, n))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_number() {
+        assert_eq!(number("123"), Ok(("", 123)));
+        assert_eq!(number("-987654"), Ok(("", -987654)));
+        assert_eq!(number("0"), Ok(("", 0)));
+    }
+}

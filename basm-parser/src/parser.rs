@@ -2,18 +2,20 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::{char, multispace0, multispace1, one_of},
-    combinator::{eof, map, opt, value},
-    multi::{many0, many1, separated_list0},
+    combinator::{eof, map, opt},
+    multi::{many0},
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
 use self::{
-    combinator::isolated_tag,
+    combinator::{isolated_tag, ptrim, trail_sep0, trail_sep1},
     simple::{comment, identifier, number},
     variable::variable,
 };
-use crate::ast::{Def, Expr, FuncDef, Literal, Stmt, StructDef, Term, Type, TypedDeclaration};
+use crate::ast::{
+    Def, Expr, FuncDef, Literal, Stmt, StructDef, Term, Type, TypedDeclaration, Variable,
+};
 
 mod combinator;
 mod simple;
@@ -58,7 +60,8 @@ pub fn struct_def(input: &str) -> IResult<&str, StructDef> {
     let (input, _) = isolated_tag("struct")(input)?;
     let (input, _) = skip(input)?;
     let (input, name) = identifier(input)?;
-    let (input, fields) = comma_sp_fields('{', '}')(input)?;
+    let (input, _) = skip(input)?;
+    let (input, fields) = trail_sep0('{', field, ',', '}')(input)?;
     Ok((input, StructDef::new(name, fields)))
 }
 
@@ -79,25 +82,12 @@ pub fn func_def(input: &str) -> IResult<&str, FuncDef> {
     let (input, _) = isolated_tag("fn")(input)?;
     let (input, _) = skip(input)?;
     let (input, name) = identifier(input)?;
-    let (input, args) = comma_sp_fields('(', ')')(input)?;
+    let (input, _) = skip(input)?;
+    let (input, args) = trail_sep0('(', field, ',', ')')(input)?;
     let (input, _) = skip(input)?;
     let (input, _) = char('{')(input)?;
     let (input, body) = terminated(many0(stmt), pair(skip, char('}')))(input)?;
     Ok((input, FuncDef::new(name, args, body)))
-}
-
-fn comma_sp_fields(
-    open: char,
-    close: char,
-) -> impl FnMut(&str) -> IResult<&str, Vec<TypedDeclaration>> {
-    move |i| {
-        let trail_comma = value((), tuple((char(','), skip, char(close))));
-        delimited(
-            pair(skip, char(open)),
-            separated_list0(pair(skip, char(',')), field),
-            pair(skip, alt((value((), char(close)), trail_comma))),
-        )(i)
-    }
 }
 
 fn field(input: &str) -> IResult<&str, TypedDeclaration> {
@@ -113,9 +103,9 @@ fn basm_type(input: &str) -> IResult<&str, Type> {
     alt((
         map(preceded(skip, identifier), |s| Type::Value(s.to_string())),
         delimited(
-            preceded(skip, char('[')),
+            ptrim(char('[')),
             map(identifier, |s| Type::Array(s.to_string())),
-            preceded(skip, char(']')),
+            ptrim(char(']')),
         ),
     ))(input)
 }
@@ -127,8 +117,7 @@ pub fn expr(input: &str) -> IResult<&str, Expr> {
 fn region(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('{')(input)?;
     let (input, _) = skip(input)?;
-    let (input, (body, _, ret)) =
-        terminated(tuple((many0(stmt), skip, expr)), pair(skip, char('}')))(input)?;
+    let (input, (body, ret)) = terminated(pair(many0(stmt), ptrim(expr)), ptrim(char('}')))(input)?;
     Ok((
         input,
         Expr::Region {
@@ -141,19 +130,8 @@ fn region(input: &str) -> IResult<&str, Expr> {
 fn call(input: &str) -> IResult<&str, Expr> {
     let (input, name) = identifier(input)?;
     let (input, _) = skip(input)?;
-    let trail_comma = value((), tuple((char(','), skip, char(')'))));
-    let (input, args) = delimited(
-        pair(skip, char('(')),
-        separated_list0(pair(skip, char(',')), variable),
-        pair(skip, alt((value((), char(')')), trail_comma))),
-    )(input)?;
-    Ok((
-        input,
-        Expr::Call {
-            name: name.to_string(),
-            args,
-        },
-    ))
+    let (input, args) = trail_sep0('(', variable, ',', ')')(input)?;
+    Ok((input, Expr::call(name, args)))
 }
 
 fn term(input: &str) -> IResult<&str, Term> {
@@ -244,20 +222,15 @@ fn braket(input: &str) -> IResult<&str, Stmt> {
 }
 
 fn move_stmt(input: &str) -> IResult<&str, Stmt> {
-    let right = pair(skip, tag("->"));
-    let item = pair(
-        preceded(skip, variable),
-        preceded(right, preceded(skip, variable)),
-    );
+    fn item(input: &str) -> IResult<&str, (Variable, Variable)> {
+        let right = tuple((skip, tag("->"), skip));
+        pair(ptrim(variable), preceded(right, variable))(input)
+    }
 
     let (input, _) = skip(input)?;
-    let (input, _) = pair(tag("move"), multispace1)(input)?;
+    let (input, _) = isolated_tag("move")(input)?;
     let (input, _) = skip(input)?;
-    let (input, _) = char('{')(input)?;
-    let (input, v) = many1(terminated(item, pair(skip, char(','))))(input)?;
-    let (input, _) = skip(input)?;
-    let (input, _) = char('}')(input)?;
-
+    let (input, v) = trail_sep1('{', item, ',', '}')(input)?;
     Ok((input, Stmt::Move(v)))
 }
 
@@ -276,13 +249,6 @@ mod tests {
             field("_f: [A]"),
             Ok(("", TypedDeclaration::new("_f", Type::array("A"))))
         );
-    }
-
-    #[test]
-    fn test_number() {
-        assert_eq!(number("123"), Ok(("", 123)));
-        assert_eq!(number("-987654"), Ok(("", -987654)));
-        assert_eq!(number("0"), Ok(("", 0)));
     }
 
     #[test]
