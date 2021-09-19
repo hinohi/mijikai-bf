@@ -3,14 +3,14 @@ use nom::{
     bytes::complete::tag,
     character::complete::{char, multispace0, multispace1, one_of},
     combinator::{eof, map, opt},
-    multi::{many0},
+    multi::many0,
     sequence::{delimited, pair, preceded, terminated, tuple},
     IResult,
 };
 
 use self::{
     combinator::{isolated_tag, ptrim, trail_sep0, trail_sep1},
-    simple::{comment, identifier, number},
+    simple::{character, comment, identifier, number},
     variable::variable,
 };
 use crate::ast::{
@@ -137,6 +137,7 @@ fn call(input: &str) -> IResult<&str, Expr> {
 fn term(input: &str) -> IResult<&str, Term> {
     alt((
         map(number, |n| Literal::Number(n).term()),
+        map(character, |c| Literal::Char(c).term()),
         map(variable, Term::Variable),
     ))(input)
 }

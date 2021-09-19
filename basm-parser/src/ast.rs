@@ -5,7 +5,7 @@ pub enum Literal {
     /// Number like `10`, `'0'`
     Number(i32),
     /// Char like `'0'`
-    Char(u8),
+    Char(char),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

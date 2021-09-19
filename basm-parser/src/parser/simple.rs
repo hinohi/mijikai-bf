@@ -1,15 +1,15 @@
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag},
-    character::complete::{alpha1, alphanumeric1, char, one_of},
-    combinator::{opt, recognize, value},
+    character::complete::{alpha1, alphanumeric1, anychar, char as char_parser, one_of},
+    combinator::{not, opt, recognize, value},
     multi::many0,
-    sequence::{pair, preceded, tuple},
+    sequence::{pair, preceded, terminated, tuple},
     IResult,
 };
 
 pub fn comment(input: &str) -> IResult<&str, &str> {
-    preceded(char('#'), is_not("\r\n"))(input)
+    preceded(char_parser('#'), is_not("\r\n"))(input)
 }
 
 pub fn identifier(input: &str) -> IResult<&str, &str> {
@@ -21,17 +21,20 @@ pub fn identifier(input: &str) -> IResult<&str, &str> {
 
 pub fn number(input: &str) -> IResult<&str, i32> {
     use nom::error;
-    let (i, s) = recognize(alt((
-        value((), char('0')),
-        value(
-            (),
-            tuple((
-                opt(char('-')),
-                one_of("123456789"),
-                many0(one_of("1234567890")),
-            )),
-        ),
-    )))(input)?;
+    let (i, s) = terminated(
+        recognize(alt((
+            value((), char_parser('0')),
+            value(
+                (),
+                tuple((
+                    opt(char_parser('-')),
+                    one_of("123456789"),
+                    many0(one_of("1234567890")),
+                )),
+            ),
+        ))),
+        not(one_of("1234567890")),
+    )(input)?;
     let n = match s.parse() {
         Ok(n) => n,
         Err(_) => {
@@ -44,6 +47,18 @@ pub fn number(input: &str) -> IResult<&str, i32> {
     Ok((i, n))
 }
 
+pub fn character(input: &str) -> IResult<&str, char> {
+    let (input, _) = char_parser('\'')(input)?;
+    let (input, slash) = opt(char_parser('\\'))(input)?;
+    let (input, c) = if slash.is_some() {
+        one_of("nrt\\0'")(input)?
+    } else {
+        anychar(input)?
+    };
+    let (input, _) = char_parser('\'')(input)?;
+    Ok((input, c))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,5 +68,12 @@ mod tests {
         assert_eq!(number("123"), Ok(("", 123)));
         assert_eq!(number("-987654"), Ok(("", -987654)));
         assert_eq!(number("0"), Ok(("", 0)));
+        assert!(number("01").is_err());
+    }
+
+    #[test]
+    fn test_character() {
+        assert_eq!(character("'a'"), Ok(("", 'a')));
+        assert_eq!(character("'\\\\'"), Ok(("", '\\')));
     }
 }
