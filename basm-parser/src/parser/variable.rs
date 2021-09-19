@@ -10,7 +10,7 @@ use nom::{
 use super::simple::{identifier, number};
 use crate::ast::Variable;
 
-pub fn variable(input: &str) -> IResult<&str, Variable> {
+pub(super) fn variable(input: &str) -> IResult<&str, Variable> {
     alt((
         value_variable,
         map(preceded(char('*'), value_variable), |t| {

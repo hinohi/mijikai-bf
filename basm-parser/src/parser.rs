@@ -46,7 +46,7 @@ fn def(input: &str) -> IResult<&str, Def> {
 /// Parse struct definition
 ///
 /// ```rust
-/// # use basm_parser::struct_def;
+/// # use basm_parser::parser::struct_def;
 /// let (input, s) = struct_def(r#"struct A {
 ///     a: Cell,
 ///     b: [C],
@@ -68,7 +68,7 @@ pub fn struct_def(input: &str) -> IResult<&str, StructDef> {
 /// Parse function definition
 ///
 /// ```rust
-/// # use basm_parser::func_def;
+/// # use basm_parser::parser::func_def;
 /// assert!(func_def(r#"fn func(a: Cell, b: [C]) {
 ///     a += 10;
 ///     while {b += 1; a} {
@@ -117,7 +117,6 @@ pub fn expr(input: &str) -> IResult<&str, Expr> {
 fn region(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('{')(input)?;
     let (input, _) = skip(input)?;
-    println!("---\n{}", input);
     let (input, (body, ret)) = terminated(pair(many0(stmt), ptrim(expr)), ptrim(char('}')))(input)?;
     Ok((
         input,

@@ -8,18 +8,18 @@ use nom::{
     IResult,
 };
 
-pub fn comment(input: &str) -> IResult<&str, &str> {
+pub(super) fn comment(input: &str) -> IResult<&str, &str> {
     preceded(char_parser('#'), is_not("\r\n"))(input)
 }
 
-pub fn identifier(input: &str) -> IResult<&str, &str> {
+pub(super) fn identifier(input: &str) -> IResult<&str, &str> {
     recognize(pair(
         alt((alpha1, tag("_"))),
         many0(alt((alphanumeric1, tag("_")))),
     ))(input)
 }
 
-pub fn number(input: &str) -> IResult<&str, i32> {
+pub(super) fn number(input: &str) -> IResult<&str, i32> {
     use nom::error;
     let (i, s) = terminated(
         recognize(alt((
@@ -47,7 +47,7 @@ pub fn number(input: &str) -> IResult<&str, i32> {
     Ok((i, n))
 }
 
-pub fn character(input: &str) -> IResult<&str, char> {
+pub(super) fn character(input: &str) -> IResult<&str, char> {
     let (input, _) = char_parser('\'')(input)?;
     let (input, slash) = opt(char_parser('\\'))(input)?;
     let (input, c) = if slash.is_some() {

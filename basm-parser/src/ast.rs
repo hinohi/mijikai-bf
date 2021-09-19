@@ -1,5 +1,3 @@
-use crate::Variable::Attribute;
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Literal {
     /// Number like `10`, `'0'`
@@ -40,7 +38,7 @@ impl Variable {
     }
 
     pub fn attr<S: Into<String>>(self, attr: S) -> Variable {
-        Attribute {
+        Variable::Attribute {
             target: Box::new(self),
             attr: attr.into(),
         }

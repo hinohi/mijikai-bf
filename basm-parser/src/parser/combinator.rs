@@ -9,15 +9,15 @@ use nom::{
 
 use super::skip;
 
-pub fn ident_char(input: &str) -> IResult<&str, &str> {
+pub(super) fn ident_char(input: &str) -> IResult<&str, &str> {
     recognize(alt((value((), alphanumeric1), value((), char('_')))))(input)
 }
 
-pub fn isolated_tag(tag: &'static str) -> impl FnMut(&str) -> IResult<&str, &str> {
+pub(super) fn isolated_tag(tag: &'static str) -> impl FnMut(&str) -> IResult<&str, &str> {
     move |i| terminated(nom::bytes::complete::tag(tag), not(ident_char))(i)
 }
 
-pub fn ptrim<'a, O, T>(mut parser: T) -> impl FnMut(&'a str) -> IResult<&'a str, O>
+pub(super) fn ptrim<'a, O, T>(mut parser: T) -> impl FnMut(&'a str) -> IResult<&'a str, O>
 where
     T: FnMut(&'a str) -> IResult<&'a str, O>,
 {
@@ -27,7 +27,7 @@ where
     }
 }
 
-pub fn trail_sep0<'a, P, O>(
+pub(super) fn trail_sep0<'a, P, O>(
     open: char,
     parser: P,
     sep: char,
@@ -47,7 +47,7 @@ where
     }
 }
 
-pub fn trail_sep1<'a, P, O>(
+pub(super) fn trail_sep1<'a, P, O>(
     open: char,
     parser: P,
     sep: char,
