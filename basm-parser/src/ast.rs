@@ -72,18 +72,9 @@ pub enum Expr {
     Variable(Variable),
     /// Region like `{a += 1; b}`
     Region { body: Vec<Stmt>, ret: Box<Expr> },
-    /// Call function like `f(a, b)`
-    Call { name: String, args: Vec<Variable> },
 }
 
 impl Expr {
-    pub fn call<S: Into<String>>(name: S, args: Vec<Variable>) -> Expr {
-        Expr::Call {
-            name: name.into(),
-            args,
-        }
-    }
-
     pub fn stmt(self) -> Stmt {
         Stmt::Expr(self)
     }
@@ -93,6 +84,8 @@ impl Expr {
 pub enum Stmt {
     /// Expression
     Expr(Expr),
+    /// Call function like `f(a, b)`
+    Call { name: String, args: Vec<Variable> },
     /// Assign add like `a += b;`
     AssignAdd {
         target: Box<Variable>,
@@ -119,6 +112,15 @@ pub enum Stmt {
     },
     /// Move like `move {a -> b; c -> d;}`
     Move(Vec<(Variable, Variable)>),
+}
+
+impl Stmt {
+    pub fn call<S: Into<String>>(name: S, args: Vec<Variable>) -> Stmt {
+        Stmt::Call {
+            name: name.into(),
+            args,
+        }
+    }
 }
 
 pub enum Def {

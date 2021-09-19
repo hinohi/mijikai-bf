@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    character::complete::{char, multispace0, multispace1, one_of},
+    character::complete::{char, multispace0, one_of},
     combinator::{eof, map, opt},
     multi::many0,
     sequence::{delimited, pair, preceded, terminated, tuple},
@@ -111,12 +111,13 @@ fn basm_type(input: &str) -> IResult<&str, Type> {
 }
 
 pub fn expr(input: &str) -> IResult<&str, Expr> {
-    alt((region, call, map(variable, Expr::Variable)))(input)
+    alt((region, map(variable, Expr::Variable)))(input)
 }
 
 fn region(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('{')(input)?;
     let (input, _) = skip(input)?;
+    println!("---\n{}", input);
     let (input, (body, ret)) = terminated(pair(many0(stmt), ptrim(expr)), ptrim(char('}')))(input)?;
     Ok((
         input,
@@ -125,13 +126,6 @@ fn region(input: &str) -> IResult<&str, Expr> {
             ret: Box::new(ret),
         },
     ))
-}
-
-fn call(input: &str) -> IResult<&str, Expr> {
-    let (input, name) = identifier(input)?;
-    let (input, _) = skip(input)?;
-    let (input, args) = trail_sep0('(', variable, ',', ')')(input)?;
-    Ok((input, Expr::call(name, args)))
 }
 
 fn term(input: &str) -> IResult<&str, Term> {
@@ -148,10 +142,18 @@ pub fn stmt(input: &str) -> IResult<&str, Stmt> {
         braket,
         assign,
         move_stmt,
-        map(tuple((skip, expr, skip, char(';'))), |(_, e, _, _)| {
-            Stmt::Expr(e)
-        }),
+        call,
+        map(terminated(ptrim(expr), ptrim(char(';'))), Stmt::Expr),
     ))(input)
+}
+
+fn call(input: &str) -> IResult<&str, Stmt> {
+    let (input, _) = skip(input)?;
+    let (input, name) = identifier(input)?;
+    let (input, _) = skip(input)?;
+    let (input, args) = trail_sep0('(', variable, ',', ')')(input)?;
+    let (input, _) = pair(skip, char(';'))(input)?;
+    Ok((input, Stmt::call(name, args)))
 }
 
 fn assign(input: &str) -> IResult<&str, Stmt> {
@@ -182,12 +184,10 @@ fn assign(input: &str) -> IResult<&str, Stmt> {
 
 fn while_stmt(input: &str) -> IResult<&str, Stmt> {
     let (input, _) = skip(input)?;
-    let (input, _) = pair(tag("while"), multispace1)(input)?;
+    let (input, _) = isolated_tag("while")(input)?;
     let (input, _) = skip(input)?;
     let (input, condition) = expr(input)?;
-    let (input, _) = skip(input)?;
-    let (input, _) = char('{')(input)?;
-    let (input, body) = terminated(many0(stmt), pair(skip, char('}')))(input)?;
+    let (input, body) = delimited(ptrim(char('{')), many0(stmt), ptrim(char('}')))(input)?;
     Ok((
         input,
         Stmt::While {
@@ -199,7 +199,7 @@ fn while_stmt(input: &str) -> IResult<&str, Stmt> {
 
 fn braket(input: &str) -> IResult<&str, Stmt> {
     let (input, _) = skip(input)?;
-    let (input, _) = pair(tag("bra"), multispace1)(input)?;
+    let (input, _) = isolated_tag("bra")(input)?;
     let (input, _) = skip(input)?;
     let (input, bra) = variable(input)?;
     let (input, _) = skip(input)?;
@@ -207,7 +207,7 @@ fn braket(input: &str) -> IResult<&str, Stmt> {
     let (input, (body, _, ret)) =
         terminated(tuple((many0(stmt), skip, expr)), pair(skip, char('}')))(input)?;
     let (input, _) = skip(input)?;
-    let (input, _) = pair(tag("ket"), multispace1)(input)?;
+    let (input, _) = isolated_tag("ket")(input)?;
     let (input, _) = skip(input)?;
     let (input, ket) = variable(input)?;
     let (input, _) = pair(skip, char(';'))(input)?;
@@ -294,16 +294,6 @@ mod tests {
     fn test_expr() {
         assert_eq!(expr("a"), Ok(("", Variable::ident("a").expr())));
         assert_eq!(
-            expr("f(a)"),
-            Ok((
-                "",
-                Expr::Call {
-                    name: "f".to_owned(),
-                    args: vec![Variable::ident("a")],
-                }
-            ))
-        );
-        assert_eq!(
             expr("{a+=1;b}"),
             Ok((
                 "",
@@ -322,6 +312,10 @@ mod tests {
     #[test]
     fn test_stmt_simple() {
         assert_eq!(stmt("a;"), Ok(("", Variable::ident("a").expr().stmt())));
+        assert_eq!(
+            stmt("f(a);"),
+            Ok(("", Stmt::call("f", vec![Variable::ident("a")])))
+        );
         assert_eq!(
             stmt("a += b;"),
             Ok((
@@ -379,7 +373,7 @@ mod tests {
                 Stmt::While {
                     condition: Box::new(Expr::Region {
                         body: vec![
-                            Expr::call("get", vec![Variable::ident("a")]).stmt(),
+                            Stmt::call("get", vec![Variable::ident("a")]),
                             Stmt::AssignAdd {
                                 target: Box::new(Variable::ident("a")),
                                 value: Box::new(Literal::Number(1).term()),
@@ -394,7 +388,7 @@ mod tests {
                             value: Box::new(Literal::Number(32).term()),
                             factor: 1,
                         },
-                        Expr::call("put", vec![Variable::ident("a")]).stmt(),
+                        Stmt::call("put", vec![Variable::ident("a")]),
                     ],
                 }
             ))
