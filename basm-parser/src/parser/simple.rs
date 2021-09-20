@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag},
-    character::complete::{alpha1, alphanumeric1, anychar, char as char_parser, one_of},
+    character::complete::{alpha1, alphanumeric1, char as char_parser, one_of, satisfy},
     combinator::{not, opt, recognize, value},
     multi::many0,
     sequence::{pair, preceded, terminated, tuple},
@@ -47,16 +47,16 @@ pub(super) fn number(input: &str) -> IResult<&str, i32> {
     Ok((i, n))
 }
 
-pub(super) fn character(input: &str) -> IResult<&str, char> {
+pub(super) fn character(input: &str) -> IResult<&str, u8> {
     let (input, _) = char_parser('\'')(input)?;
     let (input, slash) = opt(char_parser('\\'))(input)?;
     let (input, c) = if slash.is_some() {
         one_of("nrt\\0'")(input)?
     } else {
-        anychar(input)?
+        satisfy(|c| c as u32 <= 0x7F)(input)?
     };
     let (input, _) = char_parser('\'')(input)?;
-    Ok((input, c))
+    Ok((input, c as u8))
 }
 
 #[cfg(test)]
@@ -73,7 +73,8 @@ mod tests {
 
     #[test]
     fn test_character() {
-        assert_eq!(character("'a'"), Ok(("", 'a')));
-        assert_eq!(character("'\\\\'"), Ok(("", '\\')));
+        assert_eq!(character("'a'"), Ok(("", b'a')));
+        assert_eq!(character("'\\\\'"), Ok(("", b'\\')));
+        assert!(character("'🍺'").is_err());
     }
 }

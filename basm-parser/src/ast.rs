@@ -3,7 +3,7 @@ pub enum Literal {
     /// Number like `10`, `'0'`
     Number(i32),
     /// Char like `'0'`
-    Char(char),
+    Char(u8),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -96,9 +96,9 @@ pub enum Stmt {
         value: Term,
         factor: i32,
     },
-    /// While statement like `while a { b += 1 }`
+    /// While statement like `while a { a += 1 }`
     While { condition: Expr, body: Vec<Stmt> },
-    /// Bra-ket like `bra a { b += 1; c } ket c;`
+    /// Bra-ket like `bra a { b += 1; c } ket (a|c);`
     Braket {
         bra: Variable,
         body: Vec<Stmt>,
