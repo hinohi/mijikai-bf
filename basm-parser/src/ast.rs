@@ -86,27 +86,24 @@ pub enum Stmt {
     Call { name: String, args: Vec<Variable> },
     /// Assign add like `a += b;`
     AssignAdd {
-        target: Box<Variable>,
-        value: Box<Term>,
+        target: Variable,
+        value: Term,
         factor: i32,
     },
     /// Assign sub like `a -= b;`
     AssignSub {
-        target: Box<Variable>,
-        value: Box<Term>,
+        target: Variable,
+        value: Term,
         factor: i32,
     },
     /// While statement like `while a { b += 1 }`
-    While {
-        condition: Box<Expr>,
-        body: Vec<Stmt>,
-    },
+    While { condition: Expr, body: Vec<Stmt> },
     /// Bra-ket like `bra a { b += 1; c } ket c;`
     Braket {
-        bra: Box<Variable>,
+        bra: Variable,
         body: Vec<Stmt>,
-        ret: Box<Expr>,
-        ket: Box<Variable>,
+        ret: Expr,
+        ket: Variable,
     },
     /// Move like `move {a -> b; c -> d;}`
     Move(Vec<(Variable, Variable)>),

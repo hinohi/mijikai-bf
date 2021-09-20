@@ -95,18 +95,15 @@ fn field(input: &str) -> IResult<&str, TypedDeclaration> {
     let (input, name) = identifier(input)?;
     let (input, _) = skip(input)?;
     let (input, _) = char(':')(input)?;
+    let (input, _) = skip(input)?;
     let (input, typ) = basm_type(input)?;
     Ok((input, TypedDeclaration::new(name, typ)))
 }
 
 fn basm_type(input: &str) -> IResult<&str, Type> {
     alt((
-        map(preceded(skip, identifier), |s| Type::Value(s.to_string())),
-        delimited(
-            ptrim(char('[')),
-            map(identifier, |s| Type::Array(s.to_string())),
-            ptrim(char(']')),
-        ),
+        map(identifier, Type::value),
+        delimited(char('['), map(identifier, Type::array), char(']')),
     ))(input)
 }
 
@@ -167,14 +164,14 @@ fn assign(input: &str) -> IResult<&str, Stmt> {
     let (input, _) = pair(skip, char(';'))(input)?;
     let s = if t == '+' {
         Stmt::AssignAdd {
-            target: Box::new(target),
-            value: Box::new(value),
+            target,
+            value,
             factor: factor.unwrap_or(1),
         }
     } else {
         Stmt::AssignSub {
-            target: Box::new(target),
-            value: Box::new(value),
+            target,
+            value,
             factor: factor.unwrap_or(1),
         }
     };
@@ -187,13 +184,7 @@ fn while_stmt(input: &str) -> IResult<&str, Stmt> {
     let (input, _) = skip(input)?;
     let (input, condition) = expr(input)?;
     let (input, body) = delimited(ptrim(char('{')), many0(stmt), ptrim(char('}')))(input)?;
-    Ok((
-        input,
-        Stmt::While {
-            condition: Box::new(condition),
-            body,
-        },
-    ))
+    Ok((input, Stmt::While { condition, body }))
 }
 
 fn braket(input: &str) -> IResult<&str, Stmt> {
@@ -213,10 +204,10 @@ fn braket(input: &str) -> IResult<&str, Stmt> {
     Ok((
         input,
         Stmt::Braket {
-            bra: Box::new(bra),
+            bra,
             body,
-            ret: Box::new(ret),
-            ket: Box::new(ket),
+            ret,
+            ket,
         },
     ))
 }
@@ -298,8 +289,8 @@ mod tests {
                 "",
                 Expr::Region {
                     body: vec![Stmt::AssignAdd {
-                        target: Box::new(Variable::ident("a")),
-                        value: Box::new(Literal::Number(1).term()),
+                        target: Variable::ident("a"),
+                        value: Literal::Number(1).term(),
                         factor: 1,
                     }],
                     ret: Box::new(Variable::ident("b").expr()),
@@ -320,8 +311,8 @@ mod tests {
             Ok((
                 "",
                 Stmt::AssignAdd {
-                    target: Box::new(Variable::ident("a")),
-                    value: Box::new(Variable::ident("b").term()),
+                    target: Variable::ident("a"),
+                    value: Variable::ident("b").term(),
                     factor: 1,
                 }
             ))
@@ -331,8 +322,8 @@ mod tests {
             Ok((
                 "",
                 Stmt::AssignSub {
-                    target: Box::new(Variable::ident("a")),
-                    value: Box::new(Variable::ident("b").term()),
+                    target: Variable::ident("a"),
+                    value: Variable::ident("b").term(),
                     factor: 3,
                 }
             ))
@@ -346,7 +337,7 @@ mod tests {
             Ok((
                 "",
                 Stmt::While {
-                    condition: Box::new(Variable::ident("a").expr()),
+                    condition: Variable::ident("a").expr(),
                     body: Vec::new(),
                 }
             ))
@@ -370,21 +361,21 @@ mod tests {
             Ok((
                 "",
                 Stmt::While {
-                    condition: Box::new(Expr::Region {
+                    condition: Expr::Region {
                         body: vec![
                             Stmt::call("get", vec![Variable::ident("a")]),
                             Stmt::AssignAdd {
-                                target: Box::new(Variable::ident("a")),
-                                value: Box::new(Literal::Number(1).term()),
+                                target: Variable::ident("a"),
+                                value: Literal::Number(1).term(),
                                 factor: 1,
                             },
                         ],
                         ret: Box::new(Variable::ident("a").expr())
-                    }),
+                    },
                     body: vec![
                         Stmt::AssignSub {
-                            target: Box::new(Variable::ident("a")),
-                            value: Box::new(Literal::Number(32).term()),
+                            target: Variable::ident("a"),
+                            value: Literal::Number(32).term(),
                             factor: 1,
                         },
                         Stmt::call("put", vec![Variable::ident("a")]),
@@ -401,17 +392,14 @@ mod tests {
             Ok((
                 "",
                 Stmt::Braket {
-                    bra: Box::new(Variable::ident("a")),
+                    bra: Variable::ident("a"),
                     body: vec![Stmt::AssignSub {
-                        target: Box::new(Variable::ident("a")),
-                        value: Box::new(Literal::Number(1).term()),
+                        target: Variable::ident("a"),
+                        value: Literal::Number(1).term(),
                         factor: 1,
                     }],
-                    ret: Box::new(Variable::ident("b").expr()),
-                    ket: Box::new(Variable::Set(vec![
-                        Variable::ident("a"),
-                        Variable::ident("b")
-                    ])),
+                    ret: Variable::ident("b").expr(),
+                    ket: Variable::Set(vec![Variable::ident("a"), Variable::ident("b")]),
                 }
             ))
         )
